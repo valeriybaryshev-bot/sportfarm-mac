@@ -1,0 +1,43 @@
+# Sport Farm для Mac: облачный Mac GitHub собирает .dmg (CEO 06.10.2026: «что делать, если нет доступа к MacBook?»).
+# Запускается сам при каждом изменении в репозитории (или кнопкой Actions → «Run workflow»).
+# Готовый SportFarm_<версия>_mac.dmg кладётся в «Releases»; сервер склада раз в час забирает последний выпуск.
+name: Sport Farm для Mac (.dmg)
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  dmg:
+    runs-on: macos-14
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Распаковать программу (app.zip → app/)
+        run: unzip -o -q app.zip
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: app/src-tauri
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Версия
+        id: v
+        run: echo "ver=$(grep -m1 '"version"' app/src-tauri/tauri.conf.json | sed -E 's/.*"([0-9][0-9.]*)".*/\1/')" >> "$GITHUB_OUTPUT"
+      - name: Сборка (M1–M4 и Intel)
+        working-directory: app/src-tauri
+        run: npx --yes @tauri-apps/cli@2 build --target universal-apple-darwin --bundles dmg
+      - name: Имя файла
+        run: cp app/src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg "SportFarm_${{ steps.v.outputs.ver }}_mac.dmg"
+      - name: Выпуск
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.v.outputs.ver }}
+          name: Sport Farm ${{ steps.v.outputs.ver }} для Mac
+          body: Программа Sport Farm для Mac. Открой .dmg и перетащи Sport Farm в «Программы»; первый запуск — правой кнопкой → «Открыть».
+          files: SportFarm_${{ steps.v.outputs.ver }}_mac.dmg
+          make_latest: true
